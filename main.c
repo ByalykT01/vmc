@@ -12,6 +12,7 @@ typedef enum {
   ERR_STACK_OVERFLOW,
   ERR_STACK_UNDERFLOW,
   ERR_ILLEGAL_INST,
+  ERR_DIV_BY_ZERO
 } Err;
 
 const char *err_as_cstr(Err err) {
@@ -24,6 +25,8 @@ const char *err_as_cstr(Err err) {
     return "ERR_STACK_UNDERFLOW";
   case ERR_ILLEGAL_INST:
     return "ERR_ILLEGAL_INST";
+  case ERR_DIV_BY_ZERO:
+    return "ERR_DIV_BY_ZERO";
   default:
     assert(00 && "Unreachable");
   }
@@ -46,6 +49,8 @@ typedef enum {
 
 const char *inst_type_as_cstr(Inst_Type type) {
   switch (type) {
+  case INST_PUSH:
+    return "INST_PUSH";
   case INST_PLUS:
     return "INST_PLUS";
   case INST_MINUS:
@@ -106,6 +111,9 @@ Err vmc_execute_inst(Vmc *vmc, Inst inst) {
     if (vmc->stack_size < 2) {
       return ERR_STACK_UNDERFLOW;
     }
+    if (vmc->stack[vmc->stack_size - 1] == 0) {
+      return ERR_DIV_BY_ZERO;
+    }
     vmc->stack[vmc->stack_size - 2] /= vmc->stack[vmc->stack_size - 1];
     vmc->stack_size -= 1;
     break;
@@ -129,19 +137,17 @@ void vmc_dump(FILE *stream, const Vmc *vmc) {
 
 Vmc vmc = {0};
 
-Inst program[] = {
-    MAKE_INST_PUSH(1), MAKE_INST_PUSH(2), MAKE_INST_PLUS,
-    MAKE_INST_PUSH(2), MAKE_INST_MINUS,
-};
+Inst program[] = {MAKE_INST_PUSH(4), MAKE_INST_PUSH(2), MAKE_INST_PLUS,
+                  MAKE_INST_PUSH(2), MAKE_INST_MINUS,   MAKE_INST_PUSH(3),
+                  MAKE_INST_DIV};
 
 int main() {
   for (size_t i = 0; i < ARRAY_SIZE(program); ++i) {
-    printf("STEP: %zu\n", i + 1);
+    printf("STEP: %zu, %s\n", i + 1, inst_type_as_cstr(program[i].type));
     Err err = vmc_execute_inst(&vmc, program[i]);
     if (err != ERR_OK) {
-      fprintf(stderr, "Err activated: %s\n", err_as_cstr(err));
-      vmc_dump(stdout, &vmc);
-      return 1;
+      fprintf(stderr, "ERR ACTIVATED: %s\n", err_as_cstr(err));
+      exit(1);
     }
     vmc_dump(stdout, &vmc);
   }
