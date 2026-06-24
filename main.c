@@ -5,6 +5,7 @@
 #include <stdlib.h>
 
 #define VMC_STACK_CAPACITY 1024
+#define VMC_PROGRAM_CAPACITY 1024
 #define ARRAY_SIZE(xs) (sizeof(xs) / sizeof(xs[0]))
 
 typedef enum {
@@ -34,17 +35,14 @@ const char *err_as_cstr(Err err) {
 
 typedef int64_t Word;
 
-typedef struct {
-  Word stack[VMC_STACK_CAPACITY];
-  size_t stack_size;
-} Vmc;
-
 typedef enum {
   INST_PUSH,
   INST_PLUS,
   INST_MINUS,
   INST_MULT,
-  INST_DIV
+  INST_DIV,
+  INST_JMP,
+  INST_HALT,
 } Inst_Type;
 
 const char *inst_type_as_cstr(Inst_Type type) {
@@ -59,6 +57,10 @@ const char *inst_type_as_cstr(Inst_Type type) {
     return "INST_MULT";
   case INST_DIV:
     return "INST_DIV";
+  case INST_JMP:
+    return "INST_JMP";
+  case INST_HALT:
+    return "INST_HALT";
   default:
     assert(00 && "Unreachable");
   }
@@ -69,12 +71,24 @@ typedef struct {
   Word operand;
 } Inst;
 
-#define MAKE_INST_PUSH(value) {.type = INST_PUSH, .operand = (value)}
+typedef struct {
+  Word stack[VMC_STACK_CAPACITY];
+  size_t stack_size;
 
+  Inst program[VMC_PROGRAM_CAPACITY];
+  Word ip;
+  size_t program_size;
+
+  int halt;
+} Vmc;
+
+#define MAKE_INST_PUSH(value) {.type = INST_PUSH, .operand = (value)}
 #define MAKE_INST_PLUS {.type = INST_PLUS}
 #define MAKE_INST_MINUS {.type = INST_MINUS}
 #define MAKE_INST_MULT {.type = INST_MULT}
 #define MAKE_INST_DIV {.type = INST_DIV}
+#define MAKE_INST_JMP(addr) {.type = INST_JMP, .operand = (addr)}
+#define MAKE_INST_HALT {.type = INST_DIV}
 
 Err vmc_execute_inst(Vmc *vmc, Inst inst) {
   switch (inst.type) {
@@ -117,9 +131,14 @@ Err vmc_execute_inst(Vmc *vmc, Inst inst) {
     vmc->stack[vmc->stack_size - 2] /= vmc->stack[vmc->stack_size - 1];
     vmc->stack_size -= 1;
     break;
+
+  case INST_JMP:
+
+    break;
   default:
     return ERR_ILLEGAL_INST;
   }
+  vmc->ip += 1;
   return ERR_OK;
 }
 
@@ -139,12 +158,18 @@ Vmc vmc = {0};
 
 Inst program[] = {MAKE_INST_PUSH(4), MAKE_INST_PUSH(2), MAKE_INST_PLUS,
                   MAKE_INST_PUSH(2), MAKE_INST_MINUS,   MAKE_INST_PUSH(3),
-                  MAKE_INST_DIV};
+                  MAKE_INST_DIV,     MAKE_INST_HALT};
+
+void vmc_push_inst(Vmc *vmc, Inst inst) {
+  assert(vmc->program_size < VMC_PROGRAM_CAPACITY);
+  vmc->program[vmc->program_size++] = inst;
+}
 
 int main() {
-  for (size_t i = 0; i < ARRAY_SIZE(program); ++i) {
-    printf("STEP: %zu, %s\n", i + 1, inst_type_as_cstr(program[i].type));
-    Err err = vmc_execute_inst(&vmc, program[i]);
+  while (!vmc.halt) {
+    printf("STEP: %zu, %s\n", vmc.ip + 1,
+           inst_type_as_cstr(program[vmc.ip].type));
+    Err err = vmc_execute_inst(&vmc, program[vmc.ip]);
     if (err != ERR_OK) {
       fprintf(stderr, "ERR ACTIVATED: %s\n", err_as_cstr(err));
       exit(1);
